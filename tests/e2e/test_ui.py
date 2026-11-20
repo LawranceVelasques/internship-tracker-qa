@@ -89,3 +89,45 @@ def test_delete_removes_row(page):
     expect(page.get_by_test_id("row")).to_have_count(1)
     page.get_by_test_id("delete").click()
     expect(page.get_by_test_id("row")).to_have_count(0)
+
+
+def test_new_form_offers_only_starting_statuses(page):
+    """BUG-002: the form no longer offers later statuses for a new application."""
+    options = page.get_by_test_id("status").locator("option").all_inner_texts()
+    assert options == ["Wishlist", "Applied"]
+
+
+def test_change_status_from_the_table(page):
+    expect = playwright_api.expect
+    add(page, "BFI Finance", "Data Analyst Intern", "Applied", "2027-02-10")
+    status = page.get_by_test_id("row-status")
+    expect(status).to_have_value("Applied")
+    expect(status.locator("option")).to_have_text(["Applied", "Interview", "Offer", "Rejected"])
+    status.select_option("Interview")
+    expect(page.get_by_test_id("stats")).to_have_text("1 application(s) · interview rate 100.0%")
+    expect(page.get_by_test_id("row-status")).to_have_value("Interview")
+
+
+def test_final_status_has_no_dropdown(page):
+    expect = playwright_api.expect
+    add(page, "Acme", "QA Intern", "Applied", "2027-02-10")
+    page.get_by_test_id("row-status").select_option("Rejected")
+    expect(page.get_by_test_id("row")).to_contain_text("Rejected")
+    expect(page.get_by_test_id("row-status")).to_have_count(0)
+
+
+def test_wishlist_to_applied_fills_todays_date(page):
+    expect = playwright_api.expect
+    add(page, "GLI", "QA Intern")
+    page.get_by_test_id("row-status").select_option("Applied")
+    expect(page.get_by_test_id("row-status")).to_have_value("Applied")
+    expect(page.get_by_test_id("row")).to_contain_text("2027-03-01")   # the server's "today" in tests
+
+
+def test_duplicate_shows_error(page):
+    """BUG-003"""
+    expect = playwright_api.expect
+    add(page, "PT Accelist Lentera Indonesia", "Business Analyst Intern")
+    add(page, "PT Accelist Lentera Indonesia", "Business Analyst Intern")
+    expect(page.get_by_test_id("error")).to_contain_text("already exists")
+    expect(page.get_by_test_id("row")).to_have_count(1)

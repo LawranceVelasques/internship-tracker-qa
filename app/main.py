@@ -1,6 +1,7 @@
 from datetime import date
 
 from flask import Flask, abort, jsonify, render_template, request
+from werkzeug.exceptions import Conflict
 
 from . import db, rules
 
@@ -21,6 +22,10 @@ def create_app(database: str = ":memory:", today=None) -> Flask:
     def bad_request(exc):
         return jsonify(error="validation_failed", details=exc.errors), 400
 
+    @app.errorhandler(Conflict)
+    def conflict(exc):
+        return jsonify(error="duplicate", details={"application": exc.description}), 409
+
     @app.errorhandler(404)
     def not_found(_):
         return jsonify(error="not_found"), 404
@@ -37,7 +42,9 @@ def create_app(database: str = ":memory:", today=None) -> Flask:
 
     @app.get("/")
     def index():
-        return render_template("index.html", statuses=rules.STATUSES)
+        return render_template("index.html", create_statuses=[s for s in rules.STATUSES if s in rules.CREATE_STATUSES],
+                               transitions={k: sorted(v, key=rules.STATUSES.index) for k, v in rules.TRANSITIONS.items()},
+                               today=get_today().isoformat())
 
     @app.get("/api/applications")
     def list_applications():
@@ -53,6 +60,12 @@ def create_app(database: str = ":memory:", today=None) -> Flask:
     @app.post("/api/applications")
     def create_application():
         clean = rules.validate_new(json_body(), today=get_today())
+        placeholders = ",".join("?" * len(rules.OPEN_STATUSES))
+        for row in conn.execute(f"SELECT * FROM applications WHERE status IN ({placeholders})",
+                                tuple(rules.OPEN_STATUSES)):
+            if rules.same_role(dict(row), clean):
+                raise Conflict(f"An open application for {row['position']} at {row['company']} "
+                               f"already exists (id {row['id']})")
         cur = conn.execute(
             "INSERT INTO applications (company, position, location, status, applied_date, notes)"
             " VALUES (:company, :position, :location, :status, :applied_date, :notes)",
@@ -73,7 +86,7 @@ def create_app(database: str = ":memory:", today=None) -> Flask:
             raise rules.ValidationError({"body": "must be a non-empty JSON object"})
         merged = {k: current[k] for k in ("company", "position", "location", "status", "applied_date", "notes")}
         merged.update(changes)
-        clean = rules.validate_new(merged, today=get_today())
+        clean = rules.validate_new(merged, today=get_today(), creating=False)
         rules.check_transition(current["status"], clean["status"])
         conn.execute(
             "UPDATE applications SET company=:company, position=:position, location=:location,"

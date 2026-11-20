@@ -33,3 +33,13 @@ Each case maps to a requirement in the [test plan](TEST_PLAN.md) and to the auto
 | TC27 | R8 | Submit without company | Error shown, no row added | `e2e/test_ui.py::test_missing_required_field_shows_error_and_adds_nothing` |
 | TC28 | R8 | Submit a future date | Error shown | `e2e/test_ui.py::test_future_date_is_rejected_in_ui` |
 | TC29 | R8 | Press Delete on a row | Row removed | `e2e/test_ui.py::test_delete_removes_row` |
+| TC30 | R2a | Create with status Interview, Offer, Accepted or Rejected | 400 "must start as Wishlist or Applied"; nothing saved | `test_rules.py::test_new_application_cannot_skip_the_flow`, `api/test_business_rules.py::test_create_with_later_status_is_400` |
+| TC31 | R2a, R7 | Create one Applied and one Accepted (BUG-002 steps) | Second is rejected; interview rate stays 0.0% | `api/test_business_rules.py::test_create_as_accepted_no_longer_inflates_interview_rate` |
+| TC32 | R2a, R8 | Open the form's status list | Only Wishlist and Applied | `e2e/test_ui.py::test_new_form_offers_only_starting_statuses` |
+| TC33 | R4, R8 | Change Applied → Interview from the table | Dropdown lists only allowed steps; status and rate update | `e2e/test_ui.py::test_change_status_from_the_table` |
+| TC34 | R4, R8 | Set a row to Rejected | Shown as text, no dropdown | `e2e/test_ui.py::test_final_status_has_no_dropdown` |
+| TC35 | R3, R8 | Move a Wishlist row with no date to Applied | Today's date is filled in | `e2e/test_ui.py::test_wishlist_to_applied_fills_todays_date` |
+| TC36 | R9 | Add the same company + position again (different case/spacing) | 409; one record kept | `api/test_business_rules.py::test_duplicate_open_application_is_409`, `e2e/test_ui.py::test_duplicate_shows_error` |
+| TC37 | R9 | Same company, different position | 201 | `api/test_business_rules.py::test_same_company_different_position_is_allowed` |
+| TC38 | R9 | Same role after the old one is Rejected or Accepted | 201 | `api/test_business_rules.py::test_can_apply_again_after_a_closed_application` |
+| TC39 | R9 | Same-role matching ignores case and extra spaces | Matches as expected | `test_rules.py::test_same_role_ignores_case_and_spacing` |

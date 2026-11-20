@@ -16,6 +16,7 @@
   th, td { text-align: left; padding: .5rem; border-bottom: 1px solid #ddd; }
   #error { color: #b00020; min-height: 1.2em; }
   #stats { color: #555; }
+  td select { padding: .25rem; }
 </style>
 </head>
 <body>
@@ -28,7 +29,7 @@
   <label>Location <input name="location" data-testid="location"></label>
   <label>Status
     <select name="status" data-testid="status">
-      {% for s in statuses %}<option>{{ s }}</option>{% endfor %}
+      {% for s in create_statuses %}<option>{{ s }}</option>{% endfor %}
     </select>
   </label>
   <label>Applied date <input name="applied_date" type="date" data-testid="applied-date"></label>
@@ -45,6 +46,35 @@
 <script>
 const rows = document.getElementById("rows");
 const errorBox = document.getElementById("error");
+const TRANSITIONS = {{ transitions | tojson }};
+
+function showError(data) {
+  errorBox.textContent = Object.entries(data.details).map(([k, v]) => (k === "application" ? v : `${k} ${v}`)).join("; ");
+}
+
+// "Today" comes from the server, so the page and the date rules always agree.
+const TODAY = "{{ today }}";
+
+function statusCell(a) {
+  const td = document.createElement("td");
+  const next = TRANSITIONS[a.status];
+  if (!next.length) { td.textContent = a.status; return td; }   // Accepted / Rejected are final
+  const select = document.createElement("select");
+  select.dataset.testid = "row-status";
+  select.setAttribute("aria-label", `Status of ${a.company}`);
+  for (const s of [a.status, ...next.filter(s => s !== a.status)]) select.add(new Option(s, s));
+  select.onchange = async () => {
+    const body = { status: select.value };
+    if (!a.applied_date && select.value !== "Wishlist") body.applied_date = TODAY;
+    const res = await fetch(`/api/applications/${a.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    if (res.ok) errorBox.textContent = ""; else showError(await res.json());
+    refresh();
+  };
+  td.append(select);
+  return td;
+}
 
 async function refresh() {
   const [apps, stats] = await Promise.all([
@@ -54,9 +84,11 @@ async function refresh() {
   rows.replaceChildren(...apps.map(a => {
     const tr = document.createElement("tr");
     tr.dataset.testid = "row";
-    for (const v of [a.company, a.position, a.status, a.applied_date || "—"]) {
+    for (const v of [a.company, a.position]) {
       const td = document.createElement("td"); td.textContent = v; tr.append(td);
     }
+    tr.append(statusCell(a));
+    const dateTd = document.createElement("td"); dateTd.textContent = a.applied_date || "—"; tr.append(dateTd);
     const td = document.createElement("td");
     const del = document.createElement("button");
     del.textContent = "Delete"; del.dataset.testid = "delete";
@@ -76,10 +108,7 @@ document.getElementById("add-form").addEventListener("submit", async (e) => {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   });
   if (res.ok) { e.target.reset(); errorBox.textContent = ""; refresh(); }
-  else {
-    const data = await res.json();
-    errorBox.textContent = Object.entries(data.details).map(([k, v]) => `${k} ${v}`).join("; ");
-  }
+  else showError(await res.json());
 });
 
 refresh();

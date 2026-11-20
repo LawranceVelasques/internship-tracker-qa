@@ -3,7 +3,7 @@ from datetime import date
 
 import pytest
 
-from app.rules import STATUSES, TRANSITIONS, ValidationError, check_transition, validate_new
+from app.rules import STATUSES, TRANSITIONS, ValidationError, check_transition, same_role, validate_new
 
 TODAY = date(2027, 3, 1)
 
@@ -62,3 +62,36 @@ def test_every_forbidden_transition_fails(current, new):
 
 def test_final_statuses_have_no_way_out():
     assert TRANSITIONS["Accepted"] == set() and TRANSITIONS["Rejected"] == set()
+
+
+@pytest.mark.parametrize("status", ["Wishlist", "Applied"])
+def test_new_application_may_start_as_wishlist_or_applied(status):
+    clean = validate_new({"company": "A", "position": "B", "status": status,
+                          "applied_date": "2027-02-01"}, today=TODAY)
+    assert clean["status"] == status
+
+
+@pytest.mark.parametrize("status", ["Interview", "Offer", "Accepted", "Rejected"])
+def test_new_application_cannot_skip_the_flow(status):
+    """BUG-002: a new application could be created straight as Accepted."""
+    with pytest.raises(ValidationError) as exc:
+        validate_new({"company": "A", "position": "B", "status": status,
+                      "applied_date": "2027-02-01"}, today=TODAY)
+    assert exc.value.errors["status"] == "a new application must start as Wishlist or Applied"
+
+
+@pytest.mark.parametrize("status", ["Interview", "Offer", "Accepted", "Rejected"])
+def test_updates_may_hold_any_later_status(status):
+    validate_new({"company": "A", "position": "B", "status": status,
+                  "applied_date": "2027-02-01"}, today=TODAY, creating=False)
+
+
+@pytest.mark.parametrize("a,b,same", [
+    (("Acme", "QA Intern"), ("Acme", "QA Intern"), True),
+    (("PT Accelist", "BA Intern"), ("pt  accelist", "ba intern"), True),
+    (("Acme", "QA Intern"), ("Acme", "Data Intern"), False),
+    (("Acme", "QA Intern"), ("Acme Corp", "QA Intern"), False),
+])
+def test_same_role_ignores_case_and_spacing(a, b, same):
+    rec = lambda t: {"company": t[0], "position": t[1]}
+    assert same_role(rec(a), rec(b)) is same

@@ -14,6 +14,10 @@ TRANSITIONS = {
     "Rejected": set(),
 }
 
+# A new application starts at the beginning of the flow; later stages are reached by updating it.
+CREATE_STATUSES = {"Wishlist", "Applied"}
+OPEN_STATUSES = {"Wishlist", "Applied", "Interview", "Offer"}
+
 MAX_LEN = {"company": 100, "position": 100, "location": 100, "notes": 1000}
 
 
@@ -37,8 +41,12 @@ def _parse_date(value):
     return parsed
 
 
-def validate_new(data, today: date | None = None) -> dict:
-    """Return a cleaned record for a new application, or raise ValidationError."""
+def validate_new(data, today: date | None = None, creating: bool = True) -> dict:
+    """Return a cleaned record, or raise ValidationError.
+
+    `creating=True` for a new application, which may only start as Wishlist or Applied.
+    Updates pass `creating=False`; their status changes are checked by `check_transition`.
+    """
     today = today or date.today()
     if not isinstance(data, dict):
         raise ValidationError({"body": "must be a JSON object"})
@@ -67,6 +75,8 @@ def validate_new(data, today: date | None = None) -> dict:
     status = data.get("status", "Wishlist")
     if status not in STATUSES:
         errors["status"] = f"must be one of {', '.join(STATUSES)}"
+    elif creating and status not in CREATE_STATUSES:
+        errors["status"] = "a new application must start as Wishlist or Applied"
     else:
         clean["status"] = status
 
@@ -88,6 +98,12 @@ def validate_new(data, today: date | None = None) -> dict:
     if errors:
         raise ValidationError(errors)
     return clean
+
+
+def same_role(a: dict, b: dict) -> bool:
+    """True when two applications are for the same company and position (case and spacing ignored)."""
+    norm = lambda x: " ".join(x.split()).casefold()
+    return norm(a["company"]) == norm(b["company"]) and norm(a["position"]) == norm(b["position"])
 
 
 def check_transition(current: str, new: str) -> None:
