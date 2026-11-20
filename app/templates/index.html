@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Internship Tracker</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; color: #1b1b1b; }
+  h1 { margin-bottom: .25rem; }
+  form { display: grid; grid-template-columns: repeat(2, 1fr); gap: .6rem; margin: 1.25rem 0; }
+  label { display: flex; flex-direction: column; font-size: .85rem; gap: .2rem; }
+  input, select, textarea, button { font: inherit; padding: .45rem; }
+  .full { grid-column: 1 / -1; }
+  button { cursor: pointer; background: #1f3a5f; color: #fff; border: 0; border-radius: 6px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: .5rem; border-bottom: 1px solid #ddd; }
+  #error { color: #b00020; min-height: 1.2em; }
+  #stats { color: #555; }
+</style>
+</head>
+<body>
+<h1>Internship Tracker</h1>
+<p id="stats" data-testid="stats">Loading…</p>
+
+<form id="add-form" data-testid="add-form">
+  <label>Company <input name="company" data-testid="company"></label>
+  <label>Position <input name="position" data-testid="position"></label>
+  <label>Location <input name="location" data-testid="location"></label>
+  <label>Status
+    <select name="status" data-testid="status">
+      {% for s in statuses %}<option>{{ s }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Applied date <input name="applied_date" type="date" data-testid="applied-date"></label>
+  <label class="full">Notes <textarea name="notes" rows="2" data-testid="notes"></textarea></label>
+  <button class="full" type="submit" data-testid="submit">Add application</button>
+  <p id="error" class="full" role="alert" data-testid="error"></p>
+</form>
+
+<table>
+  <thead><tr><th>Company</th><th>Position</th><th>Status</th><th>Applied</th><th></th></tr></thead>
+  <tbody id="rows" data-testid="rows"></tbody>
+</table>
+
+<script>
+const rows = document.getElementById("rows");
+const errorBox = document.getElementById("error");
+
+async function refresh() {
+  const [apps, stats] = await Promise.all([
+    fetch("/api/applications").then(r => r.json()),
+    fetch("/api/stats").then(r => r.json()),
+  ]);
+  rows.replaceChildren(...apps.map(a => {
+    const tr = document.createElement("tr");
+    tr.dataset.testid = "row";
+    for (const v of [a.company, a.position, a.status, a.applied_date || "—"]) {
+      const td = document.createElement("td"); td.textContent = v; tr.append(td);
+    }
+    const td = document.createElement("td");
+    const del = document.createElement("button");
+    del.textContent = "Delete"; del.dataset.testid = "delete";
+    del.onclick = async () => { await fetch(`/api/applications/${a.id}`, { method: "DELETE" }); refresh(); };
+    td.append(del); tr.append(td);
+    return tr;
+  }));
+  document.getElementById("stats").textContent =
+    `${stats.total} application(s) · interview rate ${stats.interview_rate_pct.toFixed(1)}%`;
+}
+
+document.getElementById("add-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const body = Object.fromEntries(new FormData(e.target));
+  if (!body.applied_date) delete body.applied_date;
+  const res = await fetch("/api/applications", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  if (res.ok) { e.target.reset(); errorBox.textContent = ""; refresh(); }
+  else {
+    const data = await res.json();
+    errorBox.textContent = Object.entries(data.details).map(([k, v]) => `${k} ${v}`).join("; ");
+  }
+});
+
+refresh();
+</script>
+</body>
+</html>
